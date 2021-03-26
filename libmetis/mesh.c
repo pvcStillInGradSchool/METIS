@@ -165,19 +165,14 @@ struct Vector {
 };
 typedef struct Vector* VectorPtr;
 
-VectorPtr ConstructVector(idx_t capacity) {
-  VectorPtr this;
-  if ((this = (VectorPtr) malloc(sizeof(struct Vector))) == NULL)
-    gk_errexit(SIGMEM, "***Failed to allocate memory for Vector's members.\n");
+void ConstructVector(VectorPtr this, idx_t capacity) {
   if ((this->array_ = (idx_t*) malloc(capacity * sizeof(idx_t))) == NULL)
     gk_errexit(SIGMEM, "***Failed to allocate memory for Vector's array_'s contents.\n");
   this->size_ = 0;
   this->capacity_ = capacity;
-  return this;
 }
 void DestructVector(VectorPtr this) {
   free(this->array_);
-  free(this);
 }
 void EnlargeVector(VectorPtr this) {
   idx_t* new_array;
@@ -203,7 +198,7 @@ void CreateGraphDual(idx_t ne, idx_t nn, idx_t *eptr, idx_t *eind, idx_t ncommon
   idx_t i, j, nnbrs;
   idx_t *nptr, *nind;
   idx_t *xadj;
-  VectorPtr adjncy_vector;
+  struct Vector adjncy_vector;
   idx_t *marker, *nbrs;
 
   if (ncommon < 1) {
@@ -238,18 +233,19 @@ void CreateGraphDual(idx_t ne, idx_t nn, idx_t *eptr, idx_t *eind, idx_t ncommon
   /* allocate memory for working arrays used by FindCommonElements */
   marker = ismalloc(ne, 0, "CreateGraphDual: marker");
   nbrs   = imalloc(ne, "CreateGraphDual: nbrs");
-  adjncy_vector = ConstructVector(ne);
+  ConstructVector(&adjncy_vector, ne);
   for (i=0; i<ne; i++) {
     nnbrs = FindCommonElements(i, eptr[i+1]-eptr[i], eind+eptr[i], nptr, 
                 nind, eptr, ncommon, marker, nbrs);
     xadj[i+1] = xadj[i] + nnbrs;
     for (j=0; j < nnbrs; j++)
-      PushBackToVector(adjncy_vector, nbrs[j]);
+      PushBackToVector(&adjncy_vector, nbrs[j]);
   }
-  *r_adjncy = adjncy_vector->array_;
+  *r_adjncy = adjncy_vector.array_;
+  adjncy_vector.array_ = NULL;
 
   /* clean-up */
-  free(adjncy_vector);
+  DestructVector(&adjncy_vector);
   gk_free((void **)&nptr, &nind, &marker, &nbrs, LTERM);
 }
 
