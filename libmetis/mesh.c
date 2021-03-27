@@ -155,6 +155,39 @@ SIGTHROW:
   return metis_rcode(sigrval);
 }
 
+/*****************************************************************************/
+/*! This struct is a simplified implementation of C++'s std::vector<idx_t> */
+/*****************************************************************************/
+struct Vector {
+  idx_t capacity_;
+  idx_t size_;
+  idx_t* array_;
+};
+typedef struct Vector* VectorPtr;
+
+void ConstructVector(VectorPtr this, idx_t capacity) {
+  if ((this->array_ = (idx_t*) malloc(capacity * sizeof(idx_t))) == NULL)
+    gk_errexit(SIGMEM, "***Failed to allocate memory for Vector's array_'s contents.\n");
+  this->size_ = 0;
+  this->capacity_ = capacity;
+}
+void DestructVector(VectorPtr this) {
+  free(this->array_);
+}
+void EnlargeVector(VectorPtr this) {
+  idx_t* new_array;
+  this->capacity_ *= 2;
+  if ((new_array = (idx_t*) malloc(this->capacity_ * sizeof(idx_t))) == NULL)
+    gk_errexit(SIGMEM, "***Failed to allocate memory for Vector's array_'s contents.\n");
+  memcpy(new_array, this->array_, this->size_ * sizeof(idx_t));
+  free(this->array_);
+  this->array_ = new_array;
+}
+void PushBackToVector(VectorPtr this, idx_t x) {
+  if (this->size_ == this->capacity_)
+    EnlargeVector(this);
+  this->array_[this->size_++] = x;
+}
 
 /*****************************************************************************/
 /*! This function creates the dual of a finite element mesh */
@@ -164,7 +197,8 @@ void CreateGraphDual(idx_t ne, idx_t nn, idx_t *eptr, idx_t *eind, idx_t ncommon
 {
   idx_t i, j, nnbrs;
   idx_t *nptr, *nind;
-  idx_t *xadj, *adjncy;
+  idx_t *xadj;
+  struct Vector adjncy_vector;
   idx_t *marker, *nbrs;
 
   if (ncommon < 1) {
@@ -188,7 +222,6 @@ void CreateGraphDual(idx_t ne, idx_t nn, idx_t *eptr, idx_t *eind, idx_t ncommon
   }
   SHIFTCSR(i, nn, nptr);
 
-
   /* Allocate memory for xadj, since you know its size.
      These are done using standard malloc as they are returned
      to the calling function */
@@ -200,31 +233,19 @@ void CreateGraphDual(idx_t ne, idx_t nn, idx_t *eptr, idx_t *eind, idx_t ncommon
   /* allocate memory for working arrays used by FindCommonElements */
   marker = ismalloc(ne, 0, "CreateGraphDual: marker");
   nbrs   = imalloc(ne, "CreateGraphDual: nbrs");
-
-  for (i=0; i<ne; i++) {
-    xadj[i] = FindCommonElements(i, eptr[i+1]-eptr[i], eind+eptr[i], nptr, 
-                  nind, eptr, ncommon, marker, nbrs);
-  }
-  MAKECSR(i, ne, xadj);
-
-  /* Allocate memory for adjncy, since you now know its size.
-     These are done using standard malloc as they are returned
-     to the calling function */
-  if ((adjncy = (idx_t *)malloc(xadj[ne]*sizeof(idx_t))) == NULL) {
-    free(xadj);
-    *r_xadj = NULL;
-    gk_errexit(SIGMEM, "***Failed to allocate memory for adjncy.\n");
-  }
-  *r_adjncy = adjncy;
-
+  ConstructVector(&adjncy_vector, ne);
   for (i=0; i<ne; i++) {
     nnbrs = FindCommonElements(i, eptr[i+1]-eptr[i], eind+eptr[i], nptr, 
                 nind, eptr, ncommon, marker, nbrs);
-    for (j=0; j<nnbrs; j++)
-      adjncy[xadj[i]++] = nbrs[j];
+    xadj[i+1] = xadj[i] + nnbrs;
+    for (j=0; j < nnbrs; j++)
+      PushBackToVector(&adjncy_vector, nbrs[j]);
   }
-  SHIFTCSR(i, ne, xadj);
-  
+  *r_adjncy = adjncy_vector.array_;
+  adjncy_vector.array_ = NULL;
+
+  /* clean-up */
+  DestructVector(&adjncy_vector);
   gk_free((void **)&nptr, &nind, &marker, &nbrs, LTERM);
 }
 
