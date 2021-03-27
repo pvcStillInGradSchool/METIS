@@ -158,23 +158,22 @@ SIGTHROW:
 /*****************************************************************************/
 /*! This struct is a simplified implementation of C++'s std::vector<idx_t> */
 /*****************************************************************************/
-struct Vector {
+struct VectorHeader {
   idx_t capacity_;
   idx_t size_;
   idx_t* array_;
 };
-typedef struct Vector* VectorPtr;
-
-void ConstructVector(VectorPtr this, idx_t capacity) {
+typedef struct VectorHeader Vector;
+void ConstructVector(Vector* this, idx_t capacity) {
   if ((this->array_ = (idx_t*) malloc(capacity * sizeof(idx_t))) == NULL)
     gk_errexit(SIGMEM, "***Failed to allocate memory for Vector's array_'s contents.\n");
   this->size_ = 0;
   this->capacity_ = capacity;
 }
-void DestructVector(VectorPtr this) {
+void DestructVector(Vector* this) {
   free(this->array_);
 }
-void EnlargeVector(VectorPtr this) {
+void EnlargeVector(Vector* this) {
   idx_t* new_array;
   this->capacity_ *= 2;
   if ((new_array = (idx_t*) malloc(this->capacity_ * sizeof(idx_t))) == NULL)
@@ -183,7 +182,7 @@ void EnlargeVector(VectorPtr this) {
   free(this->array_);
   this->array_ = new_array;
 }
-void PushBackToVector(VectorPtr this, idx_t x) {
+void PushBackToVector(Vector* this, idx_t x) {
   if (this->size_ == this->capacity_)
     EnlargeVector(this);
   this->array_[this->size_++] = x;
@@ -198,7 +197,7 @@ void CreateGraphDual(idx_t ne, idx_t nn, idx_t *eptr, idx_t *eind, idx_t ncommon
   idx_t i, j, nnbrs;
   idx_t *nptr, *nind;
   idx_t *xadj;
-  struct Vector adjncy_vector;
+  Vector adjncy_vector;
   idx_t *marker, *nbrs;
 
   if (ncommon < 1) {
@@ -233,7 +232,10 @@ void CreateGraphDual(idx_t ne, idx_t nn, idx_t *eptr, idx_t *eind, idx_t ncommon
   /* allocate memory for working arrays used by FindCommonElements */
   marker = ismalloc(ne, 0, "CreateGraphDual: marker");
   nbrs   = imalloc(ne, "CreateGraphDual: nbrs");
+
+  /* Allocate memory for adjncy, whose initial size is ne. */
   ConstructVector(&adjncy_vector, ne);
+
   for (i=0; i<ne; i++) {
     nnbrs = FindCommonElements(i, eptr[i+1]-eptr[i], eind+eptr[i], nptr, 
                 nind, eptr, ncommon, marker, nbrs);
